@@ -17,3 +17,4 @@ wandb
 lion-pytorch
 accelerate==0.20.3
 huggingface_hub==0.14.1
+peft==0.13.0
