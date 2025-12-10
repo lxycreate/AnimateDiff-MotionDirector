@@ -1,6 +1,6 @@
 diffusers==0.11.1
 torch
-pyav
+av
 torchvision
 transformers
 xformers
@@ -12,6 +12,8 @@ gdown
 einops
 omegaconf
 safetensors
-gradio
+gradio==4.0.0
 wandb
 lion-pytorch
+accelerate==0.17.1
+huggingface_hub==0.14.1
