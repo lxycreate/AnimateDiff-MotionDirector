@@ -16,4 +16,4 @@ gradio==4.0.0
 wandb
 lion-pytorch
 accelerate==0.21.0
-huggingface_hub==0.14.1
+huggingface_hub==0.25.0
