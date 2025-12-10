@@ -17,4 +17,3 @@ wandb
 lion-pytorch
 accelerate==0.17.1
 huggingface_hub==0.14.1
-tokenizers==0.13.3
