@@ -15,5 +15,5 @@ safetensors
 gradio==4.0.0
 wandb
 lion-pytorch
-accelerate==0.20.3
+accelerate==0.21.0
 huggingface_hub==0.14.1
