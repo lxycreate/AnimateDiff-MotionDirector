@@ -1,8 +1,8 @@
-diffusers==0.11.1
+diffusers
 torch
 av
 torchvision
-transformers==4.41.0
+transformers
 xformers
 imageio-ffmpeg
 imageio
@@ -12,8 +12,8 @@ gdown
 einops
 omegaconf
 safetensors
-gradio==4.0.0
+gradio
 wandb
 lion-pytorch
-accelerate==0.21.0
-huggingface_hub==0.25.0
+accelerate
+huggingface_hub

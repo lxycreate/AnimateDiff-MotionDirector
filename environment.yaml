@@ -1,6 +1,6 @@
-name: animatediff-motiondirector
+name: animatediff2
 channels:
   - pytorch
 dependencies:
-  - python=3.10
+  - python=3.12
   - pip

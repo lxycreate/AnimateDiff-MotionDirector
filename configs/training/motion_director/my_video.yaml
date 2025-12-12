@@ -1,12 +1,12 @@
 # Model From Huggingface Diffusers
-pretrained_model_path: "stable-diffusion-v1-5/stable-diffusion-v1-5"
+pretrained_model_path: "models/StableDiffusion"
 
 # Model in CKPT format. This is the CKPT that you download from CivitAI or use in A111 Comfy, etc.
 # In most cases, leave this blank.
 unet_checkpoint_path: ""
 
 # Must be CKPT from https://huggingface.co/guoyww/animatediff/tree/main
-motion_module_path: "guoyww/animatediff/tree/main/v3_sd15_mm.ckpt"
+motion_module_path: "v3_sd15_mm.ckpt"
 
 # Must be CKPT from https://huggingface.co/guoyww/animatediff/tree/main
 # Optional for training, but highly recommended as a starting point. 
