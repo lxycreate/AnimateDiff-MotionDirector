@@ -237,9 +237,9 @@ class LoraInjectedConv3d(nn.Module):
             self.lora_up.weight.device
         ).to(self.lora_up.weight.dtype)
 
-UNET_DEFAULT_TARGET_REPLACE = {"CrossAttention", "Attention", "GEGLU"}
+UNET_DEFAULT_TARGET_REPLACE = {"Attention", "Attention", "GEGLU"}
 
-UNET_EXTENDED_TARGET_REPLACE = {"ResnetBlock2D", "CrossAttention", "Attention", "GEGLU"}
+UNET_EXTENDED_TARGET_REPLACE = {"ResnetBlock2D", "Attention", "Attention", "GEGLU"}
 
 TEXT_ENCODER_DEFAULT_TARGET_REPLACE = {"CLIPAttention"}
 

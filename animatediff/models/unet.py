@@ -312,10 +312,10 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         reversed_slice_size = list(reversed(slice_size))
         for module in self.children():
             fn_recursive_set_attention_slice(module, reversed_slice_size)
-
-    def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (CrossAttnDownBlock3D, DownBlock3D, CrossAttnUpBlock3D, UpBlock3D)):
-            module.gradient_checkpointing = value
+            
+    # def _set_gradient_checkpointing(self, module, enable=False, gradient_checkpointing_func=None):
+    #     if isinstance(module, (CrossAttnDownBlock3D, DownBlock3D, CrossAttnUpBlock3D, UpBlock3D)):
+    #         module.gradient_checkpointing = enable
 
     def forward(
         self,

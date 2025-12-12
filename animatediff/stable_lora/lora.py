@@ -18,7 +18,7 @@ except:
 UNET_REPLACE = ["Transformer2DModel", "ResnetBlock2D"]
 TEXT_ENCODER_REPLACE = ["CLIPAttention", "CLIPTextEmbeddings"]
 
-UNET_ATTENTION_REPLACE = ["CrossAttention"]
+# UNET_ATTENTION_REPLACE = ["Attention"]
 TEXT_ENCODER_ATTENTION_REPLACE = ["CLIPAttention", "CLIPTextEmbeddings"]
 
 """

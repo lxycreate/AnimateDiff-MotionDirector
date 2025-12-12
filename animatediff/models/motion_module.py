@@ -11,7 +11,7 @@ from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers import ModelMixin
 from diffusers.utils import BaseOutput
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.models.attention import CrossAttention, FeedForward
+from diffusers.models.attention import Attention, FeedForward
 
 from einops import rearrange, repeat
 import math
@@ -250,7 +250,7 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 
-class VersatileAttention(CrossAttention):
+class VersatileAttention(Attention):
     def __init__(
             self,
             attention_mode                     = None,

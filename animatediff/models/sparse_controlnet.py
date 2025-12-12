@@ -35,7 +35,7 @@ from .unet_blocks import (
 from einops import repeat, rearrange
 from .resnet import InflatedConv3d
 
-from diffusers.models.unet_2d_condition import UNet2DConditionModel
+from diffusers.models import UNet2DConditionModel
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -443,9 +443,9 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         for module in self.children():
             fn_recursive_set_attention_slice(module, reversed_slice_size)
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D)):
-            module.gradient_checkpointing = value
+    # def _set_gradient_checkpointing(self, module, value=False):
+    #     if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D)):
+    #         module.gradient_checkpointing = value
 
     def forward(
         self,
