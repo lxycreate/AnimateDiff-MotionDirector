@@ -274,63 +274,163 @@ class VersatileAttention(Attention):
     def extra_repr(self):
         return f"(Module Info) Attention_Mode: {self.attention_mode}, Is_Cross_Attention: {self.is_cross_attention}"
 
-    def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, video_length=None):
-        batch_size, sequence_length, _ = hidden_states.shape
+    def reshape_heads_to_batch_dim(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        将 shape (B, N, H*D) 的 tensor 拆分多头为 (B*H, N, D)
+        与旧版 reshape_heads_to_batch_dim 功能一致。
+        """
+        B, N, HD = x.shape
+        H = self.heads
+        D = HD // H
+        x = x.view(B, N, H, D)
+        x = x.permute(0, 2, 1, 3).reshape(B * H, N, D)
+        return x
 
+    def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, video_length=None):
+        # 1. 获取基本维度信息
+        batch_size, sequence_length, _ = hidden_states.shape
+        
+        # 2. Temporal 模式下的维度重排 (Spatial -> Batch, Time -> Sequence)
         if self.attention_mode == "Temporal":
-            d = hidden_states.shape[1]
+            d = hidden_states.shape[1] # spatial tokens
+            # 将 batch 和 frames 分离，把 spatial dim 放到 batch 维，frames 放到 sequence 维
+            # 输入: (batch * frames, spatial_tokens, channels)
+            # 变换后: (batch * spatial_tokens, frames, channels)
             hidden_states = rearrange(hidden_states, "(b f) d c -> (b d) f c", f=video_length)
             
             if self.pos_encoder is not None:
                 hidden_states = self.pos_encoder(hidden_states)
             
-            encoder_hidden_states = repeat(encoder_hidden_states, "b n c -> (b d) n c", d=d) if encoder_hidden_states is not None else encoder_hidden_states
+            # 同样扩展 encoder_hidden_states
+            if encoder_hidden_states is not None:
+                encoder_hidden_states = repeat(encoder_hidden_states, "b n c -> (b d) n c", d=d)
         else:
-            raise NotImplementedError
+            raise NotImplementedError("Only Temporal mode is supported in this snippet fix.")
 
-        encoder_hidden_states = encoder_hidden_states
-
+        # 3. Group Norm (保留原逻辑)
         if self.group_norm is not None:
             hidden_states = self.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
+        # 4. 投影 Query
         query = self.to_q(hidden_states)
-        dim = query.shape[-1]
-        query = self.reshape_heads_to_batch_dim(query)
+        
+        # --- 修复 API: 手动处理 Head Reshape，不再依赖 self.reshape_heads_to_batch_dim ---
+        # 现代 Diffusers 通常由 Processor 处理，这里为了复刻功能，手动实现
+        # query shape: (batch_dim, seq_len, heads * head_dim) -> (batch_dim, heads, seq_len, head_dim)
+        head_dim = query.shape[-1] // self.heads
+        query = query.view(query.shape[0], query.shape[1], self.heads, head_dim).transpose(1, 2)
 
-        if self.added_kv_proj_dim is not None:
-            raise NotImplementedError
-
+        # 5. 处理 Key 和 Value
+        # Cross Attention vs Self Attention 逻辑
         encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+        
         key = self.to_k(encoder_hidden_states)
         value = self.to_v(encoder_hidden_states)
 
-        key = self.reshape_heads_to_batch_dim(key)
-        value = self.reshape_heads_to_batch_dim(value)
+        # Head Reshape for K, V
+        key = key.view(key.shape[0], key.shape[1], self.heads, head_dim).transpose(1, 2)
+        value = value.view(value.shape[0], value.shape[1], self.heads, head_dim).transpose(1, 2)
 
+        # 6. 处理 Attention Mask (适配 SDPA)
         if attention_mask is not None:
-            if attention_mask.shape[-1] != query.shape[1]:
-                target_length = query.shape[1]
+            if attention_mask.shape[-1] != query.shape[2]: # 注意这里维度索引变了，因为 query 是 [b, h, s, d]
+                target_length = query.shape[2]
                 attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
-                attention_mask = attention_mask.repeat_interleave(self.heads, dim=0)
+            
+            # 确保 mask 维度适配广播: (batch, 1, 1, seq_len) 或 (batch, 1, seq_len, seq_len)
+            if attention_mask.ndim == 2:
+                attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)
+            elif attention_mask.ndim == 3:
+                attention_mask = attention_mask.unsqueeze(1)
+                
+            # 注意：SDPA 接受 bool mask 或 float mask (添加负无穷)，老代码通常传的是 float mask
+            # 如果是 bool，SDPA 会自动处理；如果是 float，直接传即可。
 
-        # attention, what we cannot get enough of
-        if self._use_memory_efficient_attention_xformers:
-            hidden_states = self._memory_efficient_attention_xformers(query, key, value, attention_mask)
-            # Some versions of xformers return output in fp32, cast it back to the dtype of the input
-            hidden_states = hidden_states.to(query.dtype)
-        else:
-            if self._slice_size is None or query.shape[0] // self._slice_size == 1:
-                hidden_states = self._attention(query, key, value, attention_mask)
-            else:
-                hidden_states = self._sliced_attention(query, key, value, sequence_length, dim, attention_mask)
+        # 7. Attention 计算 (核心修复)
+        # 替换了 _memory_efficient_attention_xformers 和 _sliced_attention
+        # 使用 PyTorch 2.0+ 原生 SDPA，它会自动选择 xformers (如果可用) 或 flash attention
+        hidden_states = F.scaled_dot_product_attention(
+            query, 
+            key, 
+            value, 
+            attn_mask=attention_mask, 
+            dropout_p=0.0, 
+            is_causal=False
+        )
 
-        # linear proj
-        hidden_states = self.to_out[0](hidden_states)
+        # 8. Reshape 回原始维度 (batch, seq_len, dim)
+        # (batch, heads, seq_len, head_dim) -> (batch, seq_len, heads * head_dim)
+        hidden_states = hidden_states.transpose(1, 2).reshape(hidden_states.shape[0], hidden_states.shape[2], -1)
 
-        # dropout
-        hidden_states = self.to_out[1](hidden_states)
+        # 9. 输出投影 (Linear + Dropout)
+        if self.to_out[0] is not None:
+            hidden_states = self.to_out[0](hidden_states)
+        if self.to_out[1] is not None:
+            hidden_states = self.to_out[1](hidden_states)
 
+        # 10. Temporal 维度还原
         if self.attention_mode == "Temporal":
+            # (batch * spatial, frames, channels) -> (batch * frames, spatial, channels)
             hidden_states = rearrange(hidden_states, "(b d) f c -> (b f) d c", d=d)
 
         return hidden_states
+    # def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, video_length=None):
+    #     batch_size, sequence_length, _ = hidden_states.shape
+
+    #     if self.attention_mode == "Temporal":
+    #         d = hidden_states.shape[1]
+    #         hidden_states = rearrange(hidden_states, "(b f) d c -> (b d) f c", f=video_length)
+            
+    #         if self.pos_encoder is not None:
+    #             hidden_states = self.pos_encoder(hidden_states)
+            
+    #         encoder_hidden_states = repeat(encoder_hidden_states, "b n c -> (b d) n c", d=d) if encoder_hidden_states is not None else encoder_hidden_states
+    #     else:
+    #         raise NotImplementedError
+
+    #     encoder_hidden_states = encoder_hidden_states
+
+    #     if self.group_norm is not None:
+    #         hidden_states = self.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+    #     query = self.to_q(hidden_states)
+    #     dim = query.shape[-1]
+    #     query = self.reshape_heads_to_batch_dim(query)
+
+    #     if self.added_kv_proj_dim is not None:
+    #         raise NotImplementedError
+
+    #     encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+    #     key = self.to_k(encoder_hidden_states)
+    #     value = self.to_v(encoder_hidden_states)
+
+    #     key = self.reshape_heads_to_batch_dim(key)
+    #     value = self.reshape_heads_to_batch_dim(value)
+
+    #     if attention_mask is not None:
+    #         if attention_mask.shape[-1] != query.shape[1]:
+    #             target_length = query.shape[1]
+    #             attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
+    #             attention_mask = attention_mask.repeat_interleave(self.heads, dim=0)
+
+    #     # attention, what we cannot get enough of
+    #     if self._use_memory_efficient_attention_xformers:
+    #         hidden_states = self._memory_efficient_attention_xformers(query, key, value, attention_mask)
+    #         # Some versions of xformers return output in fp32, cast it back to the dtype of the input
+    #         hidden_states = hidden_states.to(query.dtype)
+    #     else:
+    #         if self._slice_size is None or query.shape[0] // self._slice_size == 1:
+    #             hidden_states = self._attention(query, key, value, attention_mask)
+    #         else:
+    #             hidden_states = self._sliced_attention(query, key, value, sequence_length, dim, attention_mask)
+
+    #     # linear proj
+    #     hidden_states = self.to_out[0](hidden_states)
+
+    #     # dropout
+    #     hidden_states = self.to_out[1](hidden_states)
+
+    #     if self.attention_mode == "Temporal":
+    #         hidden_states = rearrange(hidden_states, "(b d) f c -> (b f) d c", d=d)
+
+    #     return hidden_states
