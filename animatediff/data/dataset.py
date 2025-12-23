@@ -91,7 +91,7 @@ if __name__ == "__main__":
     import pdb
     pdb.set_trace()
     
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=4, num_workers=16,)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=4, num_workers=8,)
     for idx, batch in enumerate(dataloader):
         print(batch["pixel_values"].shape, len(batch["text"]))
         # for i in range(batch["pixel_values"].shape[0]):

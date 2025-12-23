@@ -227,7 +227,7 @@ def handle_cache_latents(
                 new_cached_dataset,
                 batch_size=train_batch_size, 
                 shuffle=shuffle,
-                num_workers=2,
+                num_workers=1,
                 persistent_workers=True,
                 pin_memory=False,
                 sampler=sampler
